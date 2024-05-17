@@ -1,0 +1,25 @@
+[Unit]
+# describe the app
+Description=LINE filestore
+# start the app after the network is available
+After=network.target
+
+[Service]
+# usually you'll use 'simple'
+# one of https://www.freedesktop.org/software/systemd/man/systemd.service.html#Type=
+Type=simple
+# which user to use when starting the app
+## Not needed: https://unix.stackexchange.com/a/479977
+## User=ericj
+# path to your application's root directory
+WorkingDirectory=/var/www/app-linebot-filestore
+# the command to start the app
+# requires absolute paths
+ExecStart=/usr/local/bin/bun run src/index.ts
+# restart policy
+# one of {no|on-success|on-failure|on-abnormal|on-watchdog|on-abort|always}
+Restart=always
+
+[Install]
+# start the app automatically
+WantedBy=multi-user.target
