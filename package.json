@@ -1,6 +1,6 @@
 {
   "name": "app-linebot-filestore",
-  "version": "1.0.50",
+  "version": "1.1.0",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "bun run --watch src/index.ts"
@@ -8,11 +8,11 @@
   "dependencies": {
     "@elysiajs/cron": "^1.0.3",
     "@elysiajs/jwt": "^1.0.2",
-    "elysia": "latest",
-    "logestic": "^1.1.1"
+    "elysia": "^1.0",
+    "logestic": "^1.2"
   },
   "devDependencies": {
-    "bun-types": "latest"
+    "bun-types": "^1.1"
   },
   "module": "src/index.js"
 }
