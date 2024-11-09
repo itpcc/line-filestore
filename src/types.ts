@@ -84,7 +84,8 @@ export type MsgEventType = {
 export type FileMeta = {
 	type: 'line' | 'external',
 	url: string,
-	filename: string
+	filename: string,
+	origFilename: string | null
 };
 export type ReplayRespType = {
 	sentMessages: [
@@ -93,6 +94,25 @@ export type ReplayRespType = {
 			quoteToken: string,
 		}
 	]
+};
+export type PaperlessMsgType = {
+	event: MsgEventType,
+	attempt?: number,
+	filename: string,
+	origFilename: string,
+	response: Blob
+};
+export type PaperlessTaskRespType = {
+	id: number,
+	task_id: string
+	task_file_name: string
+	date_created: string,
+	date_done: string | null,
+	type: "file",
+	status: "STARTED" | "FAILURE" | "SUCCESS" | "PARSE",
+	result: string | null,
+	acknowledged: boolean
+	related_document: string | null
 };
 export type OutgoingMsgType = {
 	event: MsgEventType,

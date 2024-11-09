@@ -7,7 +7,8 @@ import {
 	loading     as loadingWorker,
 	transcoding as transcodingWorker,
 	downloading as downloadingWorker,
-	outgoing    as outgoingWorker
+	outgoing    as outgoingWorker,
+	paperless   as paperlessWorker
 } from './workers';
 
 const app = new Elysia({
@@ -17,6 +18,7 @@ const app = new Elysia({
 	.use(transcodingWorker)
 	.use(downloadingWorker)
 	.use(outgoingWorker)
+	.use(paperlessWorker)
 	.use(Logestic.preset('fancy'))
 	.get("/", () => "Hello Elysia")
 	.post(

@@ -1,4 +1,5 @@
 import { Elysia, ParseError } from 'elysia';
+import { parse as pathParse } from 'path';
 import {
 	type FileMeta,
 } from '../types';
@@ -23,15 +24,27 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 				const message = msg.event.message;
 				const fileId = `${msg.destination}_${message.id}`
 
-				if (message.type === 'audio' || message.type === 'file') {
+				if (message.type === 'audio') {
 					urls.push({
 						type: message.contentProvider.type,
 						url: (message.contentProvider.type === 'line') ?
 							`https://api-data.line.me/v2/bot/message/${message.id}/content` :
 							message.contentProvider.originalContentUrl,
-						filename: (message.type === 'audio') ?
-							`audio-${fileId}.ogg` :
-							`file-${fileId}-${message.fileName}`
+						filename: `audio-${fileId}.ogg`,
+						origFilename: null
+					});
+				} else if (message.type === 'file') {
+					const fNf = pathParse(message.fileName);
+					const fnSv = `file-${fileId}-${fNf.name.substring(0, 10)}`;
+					// const fnSv = `file-${fileId}`; 
+					const fnSvTrnc = (fnSv.length > 100) ? fnSv.substring(0, 100) : fnSv;
+					urls.push({
+						type: message.contentProvider.type,
+						url: (message.contentProvider.type === 'line') ?
+							`https://api-data.line.me/v2/bot/message/${message.id}/content` :
+							message.contentProvider.originalContentUrl,
+						filename: `${fnSvTrnc}${fNf.ext}`,
+						origFilename: message.fileName
 					});
 				} else if (message.type === 'image' || message.type === 'video') {
 					const filenamePfx = (message.type === 'image') ?
@@ -49,7 +62,8 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 							message.contentProvider.originalContentUrl,
 						filename: (message.type === 'image') ?
 							`${filenamePfx}.jpg` :
-							`${filenamePfx}.mp4`
+							`${filenamePfx}.mp4`,
+						origFilename: null
 					});
 
 					if (
@@ -63,7 +77,8 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 								message.contentProvider.previewImageUrl ?? '',
 							filename: (message.type === 'image') ?
 								`${filenamePfx}-preview.jpg` :
-								`${filenamePfx}-preview.mp4`
+								`${filenamePfx}-preview.mp4`,
+							origFilename: null
 						});
 					}
 				}
@@ -103,10 +118,21 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 						response
 					);
 
+					let resBlob = await response.blob();
+
 					await Bun.write(
 						`${(process.env.FILESTORE_PATH as string).replace(/\/$/, '')}/${sntFilename}`,
-						response
+						resBlob
 					);
+
+					if (sntFilename.match(/\.pdf$/gi) !== null) {
+						plugin.store.paperless.push({
+							event: msg,
+							filename: url.filename,
+							origFilename: url.origFilename ?? url.filename,
+							response: resBlob
+						});
+					}
 
 					return sntFilename;
 				}));
