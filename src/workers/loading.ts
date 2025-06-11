@@ -8,7 +8,7 @@ export const plugin = new Elysia({ name: 'worker-loading' })
 		name: 'loading',
 		pattern: Patterns.everySecond(),
 		async run() {
-			if (! plugin.store.loading.length) return;
+			if (! plugin.store?.loading?.length) return;
 
 			const body = plugin.store.loading.shift();
 
@@ -32,10 +32,11 @@ export const plugin = new Elysia({ name: 'worker-loading' })
 					}
 				);
 
-				if (response.status !== 202) throw new ParseError(
-					'Loading cant be sent',
-					response
-				);
+				if (response.status !== 202) {
+					let err = new ParseError(new Error('Loading cant be sent'));
+					err.cause = response;
+					throw err;
+				}
 				console.info('loading | sent ', chatId);
 
 				return;

@@ -8,7 +8,7 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 		name: 'transcoding',
 		pattern: Patterns.everySecond(),
 		async run() {
-			if (plugin.store.transcoding.length < 1) return;
+			if ((plugin.store?.transcoding?.length ?? 0) < 1) return;
 
 			const msg = plugin.store.transcoding.shift();
 
@@ -44,7 +44,9 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 				}
 
 				console.error('# transcoding | error checking ', url, body);
-				throw new ParseError('Transcoding error', body);
+				let err = new ParseError(new Error('Transcoding error'));
+				err.cause = body;
+				throw err;
 			} catch (e) {
 				console.error('# transcoding | Error: ', e);
 				msg.attempt += 1;

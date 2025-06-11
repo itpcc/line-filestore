@@ -12,7 +12,7 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 		name: 'downloading',
 		pattern: Patterns.everySecond(),
 		async run() {
-			if (plugin.store.downloading.length < 1) return;
+			if ((plugin.store?.downloading?.length ?? 0) < 1) return;
 
 			const msg = plugin.store.downloading.shift();
 
@@ -83,10 +83,11 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 					}
 				}
 
-				if (! urls.length) throw new ParseError(
-					'No suitable files to download',
-					message
-				);
+				if (! urls.length) {
+					let err = new ParseError(new Error('No suitable files to download'));
+					err.cause = message;
+					throw err;
+				}
 
 				console.info(
 					'downloading | Getting file',
@@ -113,10 +114,11 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 						}
 					);
 
-					if (response.status !== 200) throw new ParseError(
-						'File not ready to be downloaded',
-						response
-					);
+					if (response.status !== 200) {
+						let err = new ParseError(new Error('File not ready to be downloaded'));
+						err.cause = response;
+						throw err;
+					}
 
 					let resBlob = await response.blob();
 

@@ -11,7 +11,7 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 		name: 'outgoing_msg',
 		pattern: Patterns.everySecond(),
 		async run() {
-			if (! plugin.store.outgoing_msg.length) return;
+			if (! plugin.store?.outgoing_msg?.length) return;
 
 			const body = plugin.store.outgoing_msg.shift();
 
@@ -61,10 +61,11 @@ Received: ${(new Date(body.event.event.timestamp)).toISOString()}
 					}
 				);
 
-				if (response.status !== 200) throw new ParseError(
-					'Reply message cant be sent',
-					response
-				);
+				if (response.status !== 200) {
+					let err = new ParseError(new Error('Reply message cant be sent'));
+					err.cause = response;
+					throw err;
+				}
 
 				const responseJsn = await response.json() as ReplayRespType;
 				body.response = responseJsn;

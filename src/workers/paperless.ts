@@ -9,7 +9,7 @@ export const plugin = new Elysia({ name: 'worker-paperless' })
 		name: 'paperless',
 		pattern: Patterns.everySecond(),
 		async run() {
-			if (! plugin.store.paperless.length) return;
+			if (! plugin.store?.paperless?.length) return;
 
 			const body = plugin.store.paperless.shift();
 
@@ -40,10 +40,11 @@ export const plugin = new Elysia({ name: 'worker-paperless' })
 					}
 				);
 
-				if (upldRes.status !== 200) throw new ParseError(
-					'Unable to upload file',
-					upldRes
-				);
+				if (upldRes.status !== 200) {
+					let err = new ParseError(new Error('Unable to upload file'));
+					err.cause = upldRes;
+					throw err;
+				}
 
 				const taskId = await upldRes.json() as string;
 
@@ -60,10 +61,11 @@ export const plugin = new Elysia({ name: 'worker-paperless' })
 						}
 					);
 
-					if (taskRes.status !== 200) throw new ParseError(
-						'Unable to check file task',
-						taskRes
-					);
+					if (taskRes.status !== 200) {
+						let err = new ParseError(new Error('Unable to check file task'));
+						err.cause = taskRes;
+						throw err;
+					}
 
 					const taskInfo = await taskRes.json() as PaperlessTaskRespType[];
 
