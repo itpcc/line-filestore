@@ -23,5 +23,5 @@ COPY --from=install /temp/prod/node_modules node_modules
 # run the app
 USER bun
 EXPOSE 3000/tcp
-ENTRYPOINT [ "bun", "run", "index.ts" ]
+ENTRYPOINT [ "bun", "run", "src/index.ts" ]
 LABEL org.opencontainers.image.source=https://github.com/itpcc/line-filestore
