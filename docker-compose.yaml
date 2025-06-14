@@ -1,0 +1,22 @@
+services:
+  filestore:
+    build:
+      context: .
+    restart: unless-stopped
+    ports:
+      - 24380:3000
+    volumes:
+      - ./data:/mnt/bigstorage
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY}
+      CHANNEL_ID: ${CHANNEL_ID}
+      ACCESS_TOKEN: ${ACCESS_TOKEN}
+      CHANNEL_SECRET: ${CHANNEL_SECRET}
+      ITPCC_USER_ID: ${ITPCC_USER_ID}
+      ALLOW_USER_IDS: ${ALLOW_USER_IDS}
+      FILESTORE_PATH: ${FILESTORE_PATH}
+      PAPERLESS_URL: ${PAPERLESS_URL}
+      PAPERLESS_API_AUTH_TOKEN: ${PAPERLESS_API_AUTH_TOKEN}
+      PAPERLESS_CORRESPONDENT: 1
+      PAPERLESS_STORAGE_PATH: 2
+      PAPERLESS_TAGS: 3
