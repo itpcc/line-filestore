@@ -5,6 +5,8 @@ import {
 } from '../types';
 import { cron, Patterns } from '@elysiajs/cron';
 import { plugin as statePlugin } from '../state';
+import { directus } from '../directus';
+import { uploadFiles } from '@directus/sdk';
 
 export const plugin = new Elysia({ name: 'worker-downloading' })
 	.use(statePlugin)
@@ -16,8 +18,8 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 
 			const msg = plugin.store.downloading.shift();
 
-			if (! msg) return;
-			if (! msg?.attempt) msg.attempt = 1;
+			if (!msg) return;
+			if (!msg?.attempt) msg.attempt = 1;
 
 			try {
 				const urls: FileMeta[] = [];
@@ -48,12 +50,11 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 					});
 				} else if (message.type === 'image' || message.type === 'video') {
 					const filenamePfx = (message.type === 'image') ?
-					`img-${fileId}${
-						message?.imageSet?.id ?
+						`img-${fileId}${message?.imageSet?.id ?
 							`-set_${message.imageSet.id}_${message.imageSet.index}` :
 							''
-					}` :
-					`video-${fileId}`;
+						}` :
+						`video-${fileId}`;
 
 					urls.push({
 						type: message.contentProvider.type,
@@ -83,7 +84,7 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 					}
 				}
 
-				if (! urls.length) {
+				if (!urls.length) {
 					let err = new ParseError(new Error('No suitable files to download'));
 					err.cause = message;
 					throw err;
@@ -96,6 +97,9 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 					urls.map(url => url.filename)
 				);
 
+				let directusFileId: string | null = null;
+				let directusPreviewId: string | null = null;
+
 				const filenameOk = await Promise.all(urls.map(async (url) => {
 					// @see https://gist.github.com/barbietunnie/7bc6d48a424446c44ff4#file-sanitize-filename-js-L34
 					const illegalRe = /[\/\?<>\\:\*\|":]/g;
@@ -107,11 +111,11 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 						.replace(/\_{2,}/g, '_');
 					const response = await fetch(
 						url.url, {
-							method: "GET",
-							headers: url.type === 'line' ? {
-								'Authorization': `Bearer ${process.env.ACCESS_TOKEN as string}`
-							} : {},
-						}
+						method: "GET",
+						headers: url.type === 'line' ? {
+							'Authorization': `Bearer ${process.env.ACCESS_TOKEN as string}`
+						} : {},
+					}
 					);
 
 					if (response.status !== 200) {
@@ -122,10 +126,24 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 
 					let resBlob = await response.blob();
 
-					await Bun.write(
-						`${(process.env.FILESTORE_PATH as string).replace(/\/$/, '')}/${sntFilename}`,
-						resBlob
-					);
+					if (process.env.FILESTORE_PATH) {
+						await Bun.write(
+							`${(process.env.FILESTORE_PATH as string).replace(/\/$/, '')}/${sntFilename}`,
+							resBlob
+						);
+					}
+
+					// Upload to Directus
+					const formData = new FormData();
+					formData.append('file', resBlob, sntFilename);
+					const uploadRes = await directus.request(uploadFiles(formData));
+					const fileId = Array.isArray(uploadRes) ? uploadRes[0]?.id : uploadRes?.id;
+
+					if (sntFilename.includes('-preview')) {
+						directusPreviewId = fileId;
+					} else {
+						directusFileId = fileId;
+					}
 
 					if (sntFilename.match(/\.pdf$/gi) !== null) {
 						plugin.store.paperless.push({
@@ -136,15 +154,17 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 						});
 					}
 
-					return sntFilename;
+					return [sntFilename, url.origFilename ?? url.filename];
 				}));
 
 				plugin.store.outgoing_msg.push({
 					event: msg,
 					message: `
 						File store:
-						${filenameOk.join('\n')}
+						${filenameOk.map(([filenameOk, originalName]) => `  - ${filenameOk} (Original name: ${originalName})`).join('\n')}
 					`,
+					directus_file_id: directusFileId,
+					directus_preview_id: directusPreviewId
 				});
 			} catch (e) {
 				console.error('# downloading | Error: ', e);
@@ -160,7 +180,7 @@ export const plugin = new Elysia({ name: 'worker-downloading' })
 
 				// Try again later between 3 - 10 seconds
 				setTimeout(
-					function() { plugin.store.downloading.push(msg); },
+					function () { plugin.store.downloading.push(msg); },
 					Math.floor(Math.random() * (10000 - 3000 + 1)) + 3000
 				);
 			}

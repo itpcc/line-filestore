@@ -120,5 +120,7 @@ export type OutgoingMsgType = {
 	filename?: String | null,
 	attempt?: number,
 	response?: ReplayRespType,
-	error?: any
+	error?: any,
+	directus_file_id?: string | null,
+	directus_preview_id?: string | null
 };
