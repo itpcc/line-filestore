@@ -11,6 +11,7 @@ The **LINE Bot Filestore** is a highly automated media and document ingestion ga
 * **Seamless Ingestion**: Accept user-submitted documents (PDFs), images, videos, audio clips, and text messages directly through a chat interface.
 * **Automated Archiving**: Automatically upload and index PDFs into a self-hosted **Paperless-ngx** document management instance.
 * **Centralized Data Storage**: Upload media files and metadata records directly into a local **Directus** instance for unified data discovery and indexing.
+* **Custom Preview Generation**: Automatically generate premium-quality `.webp` previews for files (including documents, images, and videos) that do not have native preview thumbnails provided.
 * **User Feedback Loop**: Keep the end-user updated on the processing and storage status of their submitted assets via real-time LINE replies.
 
 ### Target Audience
@@ -30,12 +31,14 @@ The exact technology stack identified from project configuration files (`package
 * **Logging**: `logestic v1.2.4` (handles HTTP access logging).
 * **JWT Helper**: `@elysiajs/jwt v1.3.1` (available in packages for signature/token security).
 
-### External Core Systems
+### External Core Systems & APIs
 * **Headless CMS & File Hub**: **Directus (v11+ API compatible)**
   * SDK Dependency: `@directus/sdk v22.0.0`
   * Role: Relational engine, file storage manager, and search gateway.
 * **Document Management System (DMS)**: **Paperless-ngx** (API-based ingestion for OCR parsing and sorting).
 * **Platform API**: **LINE Messaging API v2** (Webhook endpoint and reply delivery).
+* **Document Converter Service**: **Stirling PDF API** (Endpoint `/api/v1/convert/pdf/img` to convert first page of PDF files to WebP at DPI=72).
+* **Video Frame Extractor**: **FFmpeg** (Used to extract a frame from video files for thumbnail generation).
 
 ### Database & Storage Recommendations
 * **Production Database**: PostgreSQL (runs underneath the local Directus instance).
@@ -58,6 +61,7 @@ sequenceDiagram
     participant W as Workers (Cron)
     participant Dir as Directus
     participant Pap as Paperless-ngx
+    participant Stirling as Stirling PDF
 
     User->>Line: Sends Media (e.g. PDF)
     Line->>App: POST /webhook (Validated Signature)
@@ -74,6 +78,22 @@ sequenceDiagram
         W->>Line: GET /message/{id}/content
         W->>Dir: POST /files (Uploads binary blob)
         note over W, Dir: Captures directus_file_id
+        
+        alt Missing native preview thumbnail
+            opt File is Image
+                W->>W: Resize image to WebP using Bun.Image
+            end
+            opt File is Video
+                W->>W: Spawn FFmpeg to extract first frame & scale to WebP
+            end
+            opt File is PDF
+                W->>Stirling: POST /api/v1/convert/pdf/img
+                Stirling-->>W: WebP preview page image
+            end
+            W->>Dir: POST /files (Uploads generated WebP preview)
+            note over W, Dir: Captures directus_preview_id
+        end
+
         alt File is PDF
             W->>Q: Push to 'paperless'
         end
@@ -107,10 +127,12 @@ sequenceDiagram
 * **`src/directus.ts`**: Exports an initialized Directus client using the `@directus/sdk` configured for static token authorization.
 * **`src/workers/loading.ts`**: Emits the LINE chat loading state so the sender sees typing/processing cues.
 * **`src/workers/transcoding.ts`**: Checks LINE video/audio transcoding state machine for succeed/retry.
-* **`src/workers/downloading.ts`**: Fetches files from LINE's media servers, uploads to Directus, and routes PDFs to the Paperless queue.
+* **`src/workers/downloading.ts`**: Fetches files from LINE's media servers, uploads to Directus, checks preview conditions, generates missing previews (resizing images, extracting video frames via FFmpeg, converting PDFs via Stirling PDF), and routes PDFs to the Paperless queue.
+* **`src/workers/downloading.test.ts`**: Verification unit test suite for download worker and preview generation behavior.
 * **`src/workers/paperless.ts`**: Uploads PDF buffers to Paperless-ngx, polls task resolution, and logs reporter tags.
 * **`src/workers/outgoing.ts`**: Replies to the user via LINE and creates metadata records in the Directus `line_messages` collection. Also writes files locally to `FILESTORE_PATH` if configured.
 * **`scripts/migrate_to_directus.py`**: A python script that reads existing local `.meta.json` records, uploads matching files to Directus, creates the `line_messages` records, preserves the original files, and logs everything to a CSV file.
+* **`scripts/regenerate_thumbnails.py`**: A python script designed to retroactively query Directus for records missing preview thumbnails, generate them locally using FFmpeg/Pillow/Stirling PDF API, upload them, and link them to the records.
 
 ---
 
@@ -129,7 +151,8 @@ line-filestore/
 ├── tsconfig.json                     # TypeScript settings for Elysia and Bun
 ├── line-filestore.service            # Systemd unit file for host-level daemon deployments
 ├── scripts/
-│   └── migrate_to_directus.py        # Standalone Python data migration script
+│   ├── migrate_to_directus.py        # Standalone Python data migration script
+│   └── regenerate_thumbnails.py      # Standalone Python script to regenerate thumbnails in Directus
 └── src/
     ├── index.ts                      # Webhook listener and queue ingestion hub
     ├── directus.ts                   # Directus client configuration
@@ -138,6 +161,7 @@ line-filestore/
     └── workers/
         ├── index.ts                  # Worker modules bundle exporter
         ├── downloading.ts            # Media download and Directus upload cron task
+        ├── downloading.test.ts       # Test suite for media download and thumbnail generation
         ├── loading.ts                # Sender loading indicator trigger cron task
         ├── outgoing.ts               # LINE reply & Directus database insert cron task
         ├── paperless.ts              # Paperless-ngx ingestion and metadata indexing cron task
@@ -166,6 +190,9 @@ PAPERLESS_TAGS=3
 # Directus Settings
 DIRECTUS_HOST="http://localhost:8055"
 DIRECTUS_TOKEN="<Directus static token>"
+
+# Stirling PDF Settings
+STIRLING_PDF_URL="http://localhost:8080"
 ```
 
 ### Step 1: Install Dependencies

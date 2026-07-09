@@ -5,16 +5,16 @@ import { bodyModel } from './types';
 import { plugin as statePlugin } from './state';
 
 import {
-	loading     as loadingWorker,
+	loading as loadingWorker,
 	transcoding as transcodingWorker,
 	downloading as downloadingWorker,
-	outgoing    as outgoingWorker,
-	paperless   as paperlessWorker
+	outgoing as outgoingWorker,
+	paperless as paperlessWorker
 } from './workers';
 
 const app = new Elysia({
-		normalize: true
-	})
+	normalize: true
+})
 	.use(statePlugin)
 	.use(loadingWorker)
 	.use(transcodingWorker)
@@ -26,7 +26,7 @@ const app = new Elysia({
 	.post(
 		'/webhook',
 		({ body, store }) => {
-			try{
+			try {
 				for (const event of body.events) {
 					const eventPayload = {
 						destination: body.destination,
@@ -81,7 +81,7 @@ const app = new Elysia({
 				'x-line-signature': t.String()
 			}),
 			body: bodyModel,
-			async parse({request: req, cookie: { hash }, error, params }, contentType) {
+			async parse({ request: req, cookie: { hash }, error, params }, contentType) {
 				if (contentType !== 'application/json') {
 					return error(400, 'Only JSON allowed');
 				}
