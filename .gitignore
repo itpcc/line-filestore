@@ -43,3 +43,5 @@ package-lock.json
 .env
 data/**
 misc/**
+__pycache__/**
+*.pyc

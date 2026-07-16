@@ -20,3 +20,10 @@ services:
       PAPERLESS_CORRESPONDENT: 1
       PAPERLESS_STORAGE_PATH: 2
       PAPERLESS_TAGS: 3
+    healthcheck:
+      test: ["CMD", "bun", "--eval", "fetch('http://localhost:3000/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+

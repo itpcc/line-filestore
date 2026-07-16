@@ -23,6 +23,7 @@ const app = new Elysia({
 	.use(paperlessWorker)
 	.use(Logestic.preset('fancy'))
 	.get("/", () => "Hello Elysia")
+	.get("/health", () => "OK")
 	.post(
 		'/webhook',
 		({ body, store }) => {

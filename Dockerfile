@@ -24,5 +24,8 @@ COPY --from=install /temp/prod/node_modules node_modules
 # run the app
 USER bun
 EXPOSE 3000/tcp
+HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
+  CMD bun --eval "fetch('http://localhost:3000/health').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
+
 ENTRYPOINT [ "bun", "src/index.ts" ]
 LABEL org.opencontainers.image.source=https://github.com/itpcc/line-filestore
