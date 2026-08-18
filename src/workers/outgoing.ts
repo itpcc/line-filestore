@@ -90,7 +90,9 @@ Received: ${(new Date(body.event.event.timestamp)).toISOString()}
 					timestamp_raw: body.event.event.timestamp,
 					file: body.directus_file_id || null,
 					file_preview: body.directus_preview_id || null,
-					files: body.directus_files_ids || [],
+					files: {
+						"create": (body.directus_files_ids || []).map(fileId => ({ directus_files_id: fileId }))
+					},
 					payload: body
 				};
 
@@ -128,7 +130,9 @@ Received: ${(new Date(body.event.event.timestamp)).toISOString()}
 						timestamp_raw: body.event.event.timestamp,
 						file: body.directus_file_id || null,
 						file_preview: body.directus_preview_id || null,
-						files: body.directus_files_ids || [],
+						files: {
+							"create": (body.directus_files_ids || []).map(fileId => ({ directus_files_id: fileId }))
+						},
 						payload: body
 					};
 
