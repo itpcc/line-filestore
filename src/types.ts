@@ -82,7 +82,7 @@ export type MsgEventType = {
 	attempt?: number
 };
 export type FileMeta = {
-	type: 'line' | 'external',
+	type: 'line' | 'external' | 'gdrive',
 	url: string,
 	filename: string,
 	origFilename: string | null

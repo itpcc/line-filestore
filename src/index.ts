@@ -4,6 +4,8 @@ import { createHmac } from 'crypto';
 import { bodyModel } from './types';
 import { plugin as statePlugin } from './state';
 
+import { extractGDriveFileId } from './gdrive';
+
 import {
 	loading as loadingWorker,
 	transcoding as transcodingWorker,
@@ -36,6 +38,13 @@ const app = new Elysia({
 
 					if (event?.type === 'message') {
 						if (event?.message?.type === 'text') {
+							const gdriveId = extractGDriveFileId(event.message.text);
+							if (gdriveId) {
+								store.loading.push(eventPayload);
+								store.downloading.push(eventPayload);
+								continue;
+							}
+
 							store.outgoing_msg.push({
 								event: eventPayload,
 								message: `

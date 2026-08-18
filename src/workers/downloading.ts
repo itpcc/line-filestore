@@ -9,6 +9,19 @@ import { cron, Patterns } from '@elysiajs/cron';
 import { plugin as statePlugin } from '../state';
 import { directus } from '../directus';
 import { uploadFiles } from '@directus/sdk';
+import { extractGDriveFileId, fetchGDriveFileMeta, downloadGDriveFile } from '../gdrive';
+
+export function sanitizeFilename(filename: string): string {
+	// @see https://gist.github.com/barbietunnie/7bc6d48a424446c44ff4#file-sanitize-filename-js-L34
+	const illegalRe = /[\/\?<>\\:\*\|":]/g;
+	const controlRe = /[\x00-\x1f\x80-\x9f]/g;
+	const windowsReservedRe = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
+	return filename
+		.replace(illegalRe, '_')
+		.replace(controlRe, '_')
+		.replace(windowsReservedRe, '_')
+		.replace(/\_{2,}/g, '_');
+}
 
 export const imageResizer = {
 	async resize(blob: Blob | ArrayBuffer, width: number, height: number, format: "webp" | "png" = "webp"): Promise<Blob> {
@@ -85,7 +98,37 @@ export async function processDownload(msg: MsgEventType, store: typeof plugin.st
 	const fileId = `${msg.destination}_${message.id}`;
 	let hasThumbnailInUrls = false;
 
-	if (message.type === 'audio') {
+	let directusFileId: string | null = null;
+	let directusPreviewId: string | null = null;
+	let originalBlob: Blob | null = null;
+	let originalFilename: string | null = null;
+	let originalOrigFilename: string | null = null;
+	const filenameOk: [string, string][] = [];
+
+	if (message.type === 'text') {
+		const gdriveId = extractGDriveFileId(message.text);
+		if (gdriveId) {
+			try {
+				const meta = await fetchGDriveFileMeta(gdriveId);
+				const fNf = pathParse(meta.name);
+				const fnSv = `file-${fileId}-${fNf.name.substring(0, 10)}`;
+				const fnSvTrnc = (fnSv.length > 100) ? fnSv.substring(0, 100) : fnSv;
+				urls.push({
+					type: 'gdrive',
+					url: gdriveId,
+					filename: `${fnSvTrnc}${fNf.ext}`,
+					origFilename: meta.name
+				});
+			} catch (e: any) {
+				console.error('downloading | Google Drive metadata error:', e);
+				store.outgoing_msg.push({
+					event: msg,
+					message: `Google Drive download skipped: ${e?.message ?? e}`
+				});
+				return;
+			}
+		}
+	} else if (message.type === 'audio') {
 		urls.push({
 			type: message.contentProvider.type,
 			url: (message.contentProvider.type === 'line') ?
@@ -149,84 +192,86 @@ export async function processDownload(msg: MsgEventType, store: typeof plugin.st
 		throw err;
 	}
 
-	console.info(
-		'downloading | Getting file',
-		msg.destination,
-		'->',
-		urls.map(url => url.filename)
-	);
-
-	let directusFileId: string | null = null;
-	let directusPreviewId: string | null = null;
-	let originalBlob: Blob | null = null;
-	let originalFilename: string | null = null;
-	let originalOrigFilename: string | null = null;
-
-	const filenameOk = await Promise.all(urls.map(async (url) => {
-		// @see https://gist.github.com/barbietunnie/7bc6d48a424446c44ff4#file-sanitize-filename-js-L34
-		const illegalRe = /[\/\?<>\\:\*\|":]/g;
-		const controlRe = /[\x00-\x1f\x80-\x9f]/g;
-		const windowsReservedRe = /^(con|prn|aux|nul|com[0-9]|lpt[0-9])(\..*)?$/i;
-		const sntFilename = url.filename.replace(illegalRe, '_')
-			.replace(controlRe, '_')
-			.replace(windowsReservedRe, '_')
-			.replace(/\_{2,}/g, '_');
-		const response = await fetch(
-			url.url, {
-			method: "GET",
-			headers: url.type === 'line' ? {
-				'Authorization': `Bearer ${process.env.ACCESS_TOKEN as string}`
-			} : {},
-		}
+	if (urls.length) {
+		console.info(
+			'downloading | Getting file',
+			msg.destination,
+			'->',
+			urls.map(url => url.filename)
 		);
 
-		if (response.status !== 200) {
-			let err = new ParseError(new Error('File not ready to be downloaded'));
-			err.cause = response;
-			throw err;
-		}
+		const fetched = await Promise.all(urls.map(async (url) => {
+			const sntFilename = sanitizeFilename(url.filename);
+			const originalName = url.origFilename ?? url.filename;
+			const sntOriginalName = sanitizeFilename(originalName);
 
-		let resBlob = await response.blob();
+			let resBlob: Blob;
+			if (url.type === 'gdrive') {
+				resBlob = await downloadGDriveFile(url.url);
+			} else {
+				const response = await fetch(
+					url.url, {
+					method: "GET",
+					headers: url.type === 'line' ? {
+						'Authorization': `Bearer ${process.env.ACCESS_TOKEN as string}`
+					} : {},
+				}
+				);
 
-		if (process.env.FILESTORE_PATH) {
-			await Bun.write(
-				`${(process.env.FILESTORE_PATH as string).replace(/\/$/, '')}/${sntFilename}`,
-				resBlob
-			);
-		}
+				if (response.status !== 200) {
+					let err = new ParseError(new Error('File not ready to be downloaded'));
+					err.cause = response;
+					throw err;
+				}
 
-		// Upload to Directus
-		const formData = new FormData();
-		formData.append('file', resBlob, sntFilename);
-		const uploadRes = await directus.request(uploadFiles(formData));
-		const fileId = Array.isArray(uploadRes) ? uploadRes[0]?.id : uploadRes?.id;
+				resBlob = await response.blob();
+			}
 
-		if (sntFilename.includes('-preview')) {
-			directusPreviewId = fileId;
-		} else {
-			directusFileId = fileId;
-			originalBlob = resBlob;
-			originalFilename = sntFilename;
-			originalOrigFilename = url.origFilename ?? url.filename;
-		}
+			if (process.env.FILESTORE_PATH) {
+				await Bun.write(
+					`${(process.env.FILESTORE_PATH as string).replace(/\/$/, '')}/${sntFilename}`,
+					resBlob
+				);
+			}
 
-		if (sntFilename.match(/\.pdf$/gi) !== null) {
-			store.paperless.push({
-				event: msg,
-				filename: url.filename,
-				origFilename: url.origFilename ?? url.filename,
-				response: resBlob
-			});
-		}
+			// Upload to Directus
+			const formData = new FormData();
+			formData.append('file', resBlob, sntOriginalName);
+			const uploadRes = await directus.request(uploadFiles(formData));
+			const fileId = Array.isArray(uploadRes) ? uploadRes[0]?.id : uploadRes?.id;
 
-		return [sntFilename, url.origFilename ?? url.filename];
-	}));
+			if (sntFilename.includes('-preview')) {
+				directusPreviewId = fileId;
+			} else {
+				directusFileId = fileId;
+				originalBlob = resBlob;
+				originalFilename = sntFilename;
+				originalOrigFilename = url.origFilename ?? url.filename;
+			}
+
+			if (sntFilename.match(/\.pdf$/gi) !== null) {
+				store.paperless.push({
+					event: msg,
+					filename: url.filename,
+					origFilename: url.origFilename ?? url.filename,
+					response: resBlob
+				});
+			}
+
+			return [sntFilename, url.origFilename ?? url.filename] as [string, string];
+		}));
+
+		filenameOk.push(...fetched);
+	}
 
 	// Custom thumbnail generation if not already downloaded
-	const ext = message.type === 'file' && message.fileName ? pathParse(message.fileName).ext.toLowerCase().replace(/^\./, '') : '';
-	const isImg = message.type === 'image' || (message.type === 'file' && ['jpg', 'jpeg', 'png', 'gif', 'apng', 'webp'].includes(ext));
-	const isVid = message.type === 'video' || (message.type === 'file' && ['mp4', 'wmv', 'webm'].includes(ext));
-	const isPdf = message.type === 'file' && ext === 'pdf';
+	const targetFilename = (message.type === 'file' && message.fileName)
+		? message.fileName
+		: (originalOrigFilename ?? '');
+	const ext = targetFilename ? pathParse(targetFilename).ext.toLowerCase().replace(/^\./, '') : '';
+	const isImg = message.type === 'image' || (['jpg', 'jpeg', 'png', 'gif', 'apng', 'webp'].includes(ext));
+	const isVid = message.type === 'video' || (['mp4', 'wmv', 'webm'].includes(ext));
+	const isPdf = ext === 'pdf';
 
 	const shouldGeneratePreview = !hasThumbnailInUrls && (isImg || isVid || isPdf);
 
@@ -293,7 +338,7 @@ export async function processDownload(msg: MsgEventType, store: typeof plugin.st
 
 		// Upload to Directus
 		const formData = new FormData();
-		formData.append('file', previewBlob, previewFilename);
+		formData.append('file', previewBlob, sanitizeFilename(previewOrigFilename));
 		const uploadRes = await directus.request(uploadFiles(formData));
 		const fileId = Array.isArray(uploadRes) ? uploadRes[0]?.id : uploadRes?.id;
 

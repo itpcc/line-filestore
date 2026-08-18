@@ -280,4 +280,153 @@ describe("Downloading Worker Thumbnail Generation", () => {
 		expect(store.outgoing_msg[0].directus_file_id).toBe("mock-uploaded-file-id");
 		expect(store.outgoing_msg[0].directus_preview_id).toBeNull(); // No preview ID
 	});
+
+	test("Sanitizes filename correctly with sanitizeFilename", () => {
+		const { sanitizeFilename } = require("./downloading");
+		expect(sanitizeFilename("hello/world?.pdf")).toBe("hello_world_.pdf");
+		expect(sanitizeFilename("report:2026<test>|file.docx")).toBe("report_2026_test_file.docx");
+		expect(sanitizeFilename("aux.txt")).toBe("_");
+	});
+
+	test("Directus upload uses sanitized originalName for files", async () => {
+		const uploadedFilenames: string[] = [];
+
+		// Intercept directus request to capture uploaded filenames
+		const { directus } = require("../directus");
+		const origRequest = directus.request;
+		directus.request = mock(async (action: any) => {
+			const options = typeof action === "function" ? action({ request: () => {} }) : action;
+			const bodyFormData = options?.body ?? action?.body;
+			if (bodyFormData && typeof bodyFormData.get === "function") {
+				const fileObj = bodyFormData.get("file");
+				if (fileObj && fileObj.name) {
+					uploadedFilenames.push(fileObj.name);
+				}
+			}
+			return { id: "mock-directus-id-123" };
+		});
+
+		globalThis.fetch = mock(async (url: string) => {
+			return {
+				status: 200,
+				blob: async () => new Blob(["doc-content"], { type: "application/pdf" })
+			} as any;
+		}) as any;
+
+		const store = {
+			downloading: [],
+			outgoing_msg: [],
+			paperless: [],
+			loading: [],
+			transcoding: []
+		} as any;
+
+		const msg: MsgEventType = {
+			destination: "dest123",
+			event: {
+				type: "message",
+				webhookEventId: "evt_orig_123",
+				replyToken: "reply_orig_123",
+				message: {
+					type: "file",
+					id: "msg_orig_123",
+					fileName: "my/original?document.pdf",
+					fileSize: 54321,
+					contentProvider: {
+						type: "external",
+						originalContentUrl: "https://example.com/doc.pdf"
+					}
+				},
+				timestamp: Date.now(),
+				source: {
+					type: "user",
+					userId: "user_abc"
+				}
+			}
+		};
+
+		await processDownload(msg, store);
+
+		directus.request = origRequest;
+
+		// Stored in local path remains the same (truncated file id filename), but uploaded to Directus with sanitized originalName
+		expect(uploadedFilenames[0]).toBe("my_original_document.pdf");
+		expect(uploadedFilenames[1]).toBe("original_document-preview.webp");
+	});
+
+	test("Processes Google Drive links in text messages", async () => {
+		const { resetGDriveClientCache } = require("../gdrive");
+		resetGDriveClientCache();
+		const uploadedFilenames: string[] = [];
+		const { directus } = require("../directus");
+		const origRequest = directus.request;
+		directus.request = mock(async (action: any) => {
+			const options = typeof action === "function" ? action({ request: () => {} }) : action;
+			const bodyFormData = options?.body ?? action?.body;
+			if (bodyFormData && typeof bodyFormData.get === "function") {
+				const fileObj = bodyFormData.get("file");
+				if (fileObj && fileObj.name) {
+					uploadedFilenames.push(fileObj.name);
+				}
+			}
+			return { id: "mock-gdrive-directus-id" };
+		});
+
+		const { google } = require("googleapis");
+		const origDrive = google.drive;
+		google.drive = mock(() => ({
+			files: {
+				get: async (params: any) => {
+					if (params?.alt === "media") {
+						return { data: new TextEncoder().encode("gdrive-pdf-bytes").buffer };
+					}
+					return {
+						data: {
+							id: "gdrive_doc_id",
+							name: "gdrive_report?.pdf",
+							mimeType: "application/pdf",
+							size: "1000"
+						}
+					};
+				}
+			}
+		}));
+
+		const store = {
+			downloading: [],
+			outgoing_msg: [],
+			paperless: [],
+			loading: [],
+			transcoding: []
+		} as any;
+
+		const msg: MsgEventType = {
+			destination: "dest123",
+			event: {
+				type: "message",
+				webhookEventId: "evt_gdrive_123",
+				replyToken: "reply_gdrive_123",
+				message: {
+					type: "text",
+					id: "msg_gdrive_123",
+					quoteToken: "quote_gdrive_123",
+					text: "Here is the link: https://drive.google.com/file/d/gdrive_doc_id/view"
+				},
+				timestamp: Date.now(),
+				source: {
+					type: "user",
+					userId: "user_abc"
+				}
+			}
+		};
+
+		await processDownload(msg, store);
+
+		directus.request = origRequest;
+		google.drive = origDrive;
+
+		expect(store.outgoing_msg.length).toBe(1);
+		expect(uploadedFilenames[0]).toBe("gdrive_report_.pdf");
+	});
 });
+
