@@ -11,22 +11,33 @@ export function resetGDriveClientCache(): void {
 	cachedCredKey = null;
 }
 
-export function extractGDriveFileId(text: string): string | null {
-	if (!text) return null;
+export function extractGDriveFileIds(text: string): string[] {
+	if (!text) return [];
+
+	const ids: string[] = [];
 
 	// Matches /file/d/{fileId}
-	const fileDMatch = text.match(/(?:drive|docs)\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/i);
-	if (fileDMatch && fileDMatch[1]) {
-		return fileDMatch[1];
+	const fileDMatches = text.matchAll(/(?:drive|docs)\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/gi);
+	for (const match of fileDMatches) {
+		if (match[1] && !ids.includes(match[1])) {
+			ids.push(match[1]);
+		}
 	}
 
 	// Matches uc?id={fileId} or open?id={fileId}
-	const idParamMatch = text.match(/drive\.google\.com\/(?:uc|open)\?[^#]*\bid=([a-zA-Z0-9_-]+)/i);
-	if (idParamMatch && idParamMatch[1]) {
-		return idParamMatch[1];
+	const idParamMatches = text.matchAll(/drive\.google\.com\/(?:uc|open)\?[^#]*\bid=([a-zA-Z0-9_-]+)/gi);
+	for (const match of idParamMatches) {
+		if (match[1] && !ids.includes(match[1])) {
+			ids.push(match[1]);
+		}
 	}
 
-	return null;
+	return ids;
+}
+
+export function extractGDriveFileId(text: string): string | null {
+	const ids = extractGDriveFileIds(text);
+	return ids.length > 0 ? ids[0] : null;
 }
 
 export function getGDriveClient(): drive_v3.Drive {

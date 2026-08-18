@@ -74,9 +74,11 @@ Received: ${(new Date(body.event.event.timestamp)).toISOString()}
 					body.response = responseJsn;
 				}
 
-				const textContent = body.event.event.message.type === 'text'
-					? body.event.event.message.text
-					: body.message.trim();
+				const origText = body.event.event.message.type === 'text'
+					? body.event.event.message.text.trim()
+					: '';
+				const botMsg = body.message.trim();
+				const textContent = [origText, botMsg].filter(Boolean).join('\n\n');
 
 				const directusPayload = {
 					message_id: body.event.event.message.id,
@@ -88,6 +90,7 @@ Received: ${(new Date(body.event.event.timestamp)).toISOString()}
 					timestamp_raw: body.event.event.timestamp,
 					file: body.directus_file_id || null,
 					file_preview: body.directus_preview_id || null,
+					files: body.directus_files_ids || [],
 					payload: body
 				};
 
@@ -109,9 +112,11 @@ Received: ${(new Date(body.event.event.timestamp)).toISOString()}
 
 				if (body.attempt > 3) {
 					body.error = e;
-					const textContent = body.event.event.message.type === 'text'
-						? body.event.event.message.text
-						: body.message.trim();
+					const origText = body.event.event.message.type === 'text'
+						? body.event.event.message.text.trim()
+						: '';
+					const botMsg = body.message.trim();
+					const textContent = [origText, botMsg].filter(Boolean).join('\n\n');
 
 					const directusPayload = {
 						message_id: body.event.event.message.id,
@@ -123,6 +128,7 @@ Received: ${(new Date(body.event.event.timestamp)).toISOString()}
 						timestamp_raw: body.event.event.timestamp,
 						file: body.directus_file_id || null,
 						file_preview: body.directus_preview_id || null,
+						files: body.directus_files_ids || [],
 						payload: body
 					};
 

@@ -1,5 +1,5 @@
 import { describe, expect, test, mock, beforeAll, beforeEach, afterAll } from "bun:test";
-import { extractGDriveFileId, fetchGDriveFileMeta, getGDriveClient, resetGDriveClientCache } from "./gdrive";
+import { extractGDriveFileId, extractGDriveFileIds, fetchGDriveFileMeta, getGDriveClient, resetGDriveClientCache } from "./gdrive";
 
 describe("Google Drive Link Extractor", () => {
 	test("Extracts file ID from standard /file/d/{id} links", () => {
@@ -10,6 +10,11 @@ describe("Google Drive Link Extractor", () => {
 	test("Extracts file ID from uc?id={id} and open?id={id} links", () => {
 		expect(extractGDriveFileId("https://drive.google.com/uc?id=abc123DEF456&export=download")).toBe("abc123DEF456");
 		expect(extractGDriveFileId("https://drive.google.com/open?id=MY_FILE_ID_99")).toBe("MY_FILE_ID_99");
+	});
+
+	test("Extracts multiple file IDs from text with multiple links", () => {
+		const text = "Link 1: https://drive.google.com/file/d/ID_ONE/view and Link 2: https://drive.google.com/file/d/ID_TWO/view";
+		expect(extractGDriveFileIds(text)).toEqual(["ID_ONE", "ID_TWO"]);
 	});
 
 	test("Returns null for non-Google Drive links or regular text", () => {

@@ -122,5 +122,6 @@ export type OutgoingMsgType = {
 	response?: ReplayRespType,
 	error?: any,
 	directus_file_id?: string | null,
-	directus_preview_id?: string | null
+	directus_preview_id?: string | null,
+	directus_files_ids?: string[] | null
 };

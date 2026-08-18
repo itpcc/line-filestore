@@ -9,7 +9,7 @@ import { cron, Patterns } from '@elysiajs/cron';
 import { plugin as statePlugin } from '../state';
 import { directus } from '../directus';
 import { uploadFiles } from '@directus/sdk';
-import { extractGDriveFileId, fetchGDriveFileMeta, downloadGDriveFile } from '../gdrive';
+import { downloadGDriveFile, extractGDriveFileIds, fetchGDriveFileMeta } from '../gdrive';
 
 export function sanitizeFilename(filename: string): string {
 	// @see https://gist.github.com/barbietunnie/7bc6d48a424446c44ff4#file-sanitize-filename-js-L34
@@ -100,32 +100,36 @@ export async function processDownload(msg: MsgEventType, store: typeof plugin.st
 
 	let directusFileId: string | null = null;
 	let directusPreviewId: string | null = null;
+	const directusFilesIds: string[] = [];
 	let originalBlob: Blob | null = null;
 	let originalFilename: string | null = null;
 	let originalOrigFilename: string | null = null;
 	const filenameOk: [string, string][] = [];
 
 	if (message.type === 'text') {
-		const gdriveId = extractGDriveFileId(message.text);
-		if (gdriveId) {
+		const gdriveIds = extractGDriveFileIds(message.text);
+		for (let idx = 0; idx < gdriveIds.length; idx++) {
+			const gdriveId = gdriveIds[idx];
 			try {
 				const meta = await fetchGDriveFileMeta(gdriveId);
 				const fNf = pathParse(meta.name);
 				const fnSv = `file-${fileId}-${fNf.name.substring(0, 10)}`;
 				const fnSvTrnc = (fnSv.length > 100) ? fnSv.substring(0, 100) : fnSv;
+				const filename = gdriveIds.length > 1 && idx > 0
+					? `${fnSvTrnc}_${idx}${fNf.ext}`
+					: `${fnSvTrnc}${fNf.ext}`;
 				urls.push({
 					type: 'gdrive',
 					url: gdriveId,
-					filename: `${fnSvTrnc}${fNf.ext}`,
+					filename,
 					origFilename: meta.name
 				});
 			} catch (e: any) {
-				console.error('downloading | Google Drive metadata error:', e);
+				console.error(`downloading | Google Drive metadata error for ${gdriveId}:`, e);
 				store.outgoing_msg.push({
 					event: msg,
-					message: `Google Drive download skipped: ${e?.message ?? e}`
+					message: `Google Drive download skipped (${gdriveId}): ${e?.message ?? e}`
 				});
-				return;
 			}
 		}
 	} else if (message.type === 'audio') {
@@ -242,11 +246,13 @@ export async function processDownload(msg: MsgEventType, store: typeof plugin.st
 
 			if (sntFilename.includes('-preview')) {
 				directusPreviewId = fileId;
-			} else {
+			} else if (!directusFileId) {
 				directusFileId = fileId;
 				originalBlob = resBlob;
 				originalFilename = sntFilename;
 				originalOrigFilename = url.origFilename ?? url.filename;
+			} else {
+				directusFilesIds.push(fileId);
 			}
 
 			if (sntFilename.match(/\.pdf$/gi) !== null) {
@@ -354,7 +360,8 @@ export async function processDownload(msg: MsgEventType, store: typeof plugin.st
 			`  - ${filenameOk} (Original name: ${originalName})`).join('\n')}
 		`,
 		directus_file_id: directusFileId,
-		directus_preview_id: directusPreviewId
+		directus_preview_id: directusPreviewId,
+		directus_files_ids: directusFilesIds
 	});
 }
 

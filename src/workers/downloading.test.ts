@@ -428,5 +428,85 @@ describe("Downloading Worker Thumbnail Generation", () => {
 		expect(store.outgoing_msg.length).toBe(1);
 		expect(uploadedFilenames[0]).toBe("gdrive_report_.pdf");
 	});
+
+	test("Processes multiple Google Drive links in text messages and populates directus_files_ids", async () => {
+		const { resetGDriveClientCache } = require("../gdrive");
+		resetGDriveClientCache();
+		const uploadedFilenames: string[] = [];
+		let uploadCounter = 0;
+		const { directus } = require("../directus");
+		const origRequest = directus.request;
+		directus.request = mock(async (action: any) => {
+			uploadCounter++;
+			const options = typeof action === "function" ? action({ request: () => {} }) : action;
+			const bodyFormData = options?.body ?? action?.body;
+			if (bodyFormData && typeof bodyFormData.get === "function") {
+				const fileObj = bodyFormData.get("file");
+				if (fileObj && fileObj.name) {
+					uploadedFilenames.push(fileObj.name);
+				}
+			}
+			return { id: `mock-gdrive-id-${uploadCounter}` };
+		});
+
+		const { google } = require("googleapis");
+		const origDrive = google.drive;
+		google.drive = mock(() => ({
+			files: {
+				get: async (params: any) => {
+					if (params?.alt === "media") {
+						return { data: new TextEncoder().encode("gdrive-pdf-bytes").buffer };
+					}
+					const isFile1 = params?.fileId === "gdrive_id_1";
+					return {
+						data: {
+							id: params?.fileId,
+							name: isFile1 ? "doc_one.pdf" : "doc_two.pdf",
+							mimeType: "application/pdf",
+							size: "1000"
+						}
+					};
+				}
+			}
+		}));
+
+		const store = {
+			downloading: [],
+			outgoing_msg: [],
+			paperless: [],
+			loading: [],
+			transcoding: []
+		} as any;
+
+		const msg: MsgEventType = {
+			destination: "dest123",
+			event: {
+				type: "message",
+				webhookEventId: "evt_gdrive_multi_123",
+				replyToken: "reply_gdrive_multi_123",
+				message: {
+					type: "text",
+					id: "msg_gdrive_multi_123",
+					quoteToken: "quote_gdrive_multi_123",
+					text: "Link 1: https://drive.google.com/file/d/gdrive_id_1/view Link 2: https://drive.google.com/file/d/gdrive_id_2/view"
+				},
+				timestamp: Date.now(),
+				source: {
+					type: "user",
+					userId: "user_abc"
+				}
+			}
+		};
+
+		await processDownload(msg, store);
+
+		directus.request = origRequest;
+		google.drive = origDrive;
+
+		expect(store.outgoing_msg.length).toBe(1);
+		const outMsg = store.outgoing_msg[0];
+		expect(outMsg.directus_file_id).toBe("mock-gdrive-id-1");
+		expect(outMsg.directus_files_ids).toEqual(["mock-gdrive-id-2"]);
+	});
 });
 
