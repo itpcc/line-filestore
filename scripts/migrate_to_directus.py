@@ -261,7 +261,7 @@ def main():
             "message_id": message_id,
             "destination": destination,
             "sender_id": sender_id,
-            "message_type": message_type,
+            "message_type": [message_type] if isinstance(message_type, str) else message_type,
             "text_content": text_content,
             "timestamp": timestamp,
             "timestamp_raw": timestamp_raw,

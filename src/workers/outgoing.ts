@@ -112,7 +112,7 @@ Received: ${(new Date(body.event.event.timestamp)).toISOString()}
 				console.error('# message | Error: ', e);
 				body.attempt += 1;
 
-				if (body.attempt > 3) {
+				if (body.attempt > 3 || (e instanceof ParseError && (e.cause as any)?.status === 400)) {
 					body.error = e;
 					const origText = body.event.event.message.type === 'text'
 						? body.event.event.message.text.trim()
@@ -124,7 +124,7 @@ Received: ${(new Date(body.event.event.timestamp)).toISOString()}
 						message_id: body.event.event.message.id,
 						destination: body.event.destination,
 						sender_id: body.event.event.source.userId,
-						message_type: body.event.event.message.type,
+						message_type: [body.event.event.message.type],
 						text_content: textContent,
 						timestamp: new Date(body.event.event.timestamp).toISOString(),
 						timestamp_raw: body.event.event.timestamp,
