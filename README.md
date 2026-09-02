@@ -35,6 +35,7 @@ To automatically download files from Google Drive links received in text message
 
 2. **Configure Environment Variables (`.env`)**:
    - `GDRIVE_FILE_SIZE_MAX_MB`: Maximum allowed file size in MB to download (e.g. `50`).
+   - `GDRIVE_AUTH_METHOD`: *(Optional)* Explicitly select authentication strategy (`service_account`, `oauth`, or `api_key`). If omitted, `service_account` takes precedence if configured, followed by `oauth`, then `api_key`.
    - **For Personal Account**:
      - `GDRIVE_OAUTH_CLIENT_ID`: Your OAuth 2.0 Client ID.
      - `GDRIVE_OAUTH_CLIENT_SECRET`: Your OAuth 2.0 Client Secret.

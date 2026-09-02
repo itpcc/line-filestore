@@ -508,5 +508,56 @@ describe("Downloading Worker Thumbnail Generation", () => {
 		expect(outMsg.directus_file_id).toBe("mock-gdrive-id-1");
 		expect(outMsg.directus_files_ids).toEqual(["mock-gdrive-id-2"]);
 	});
+
+	test("Consolidates Google Drive errors (e.g. invalid_grant) into a single outgoing message and avoids processDownload throwing", async () => {
+		const { resetGDriveClientCache } = require("../gdrive");
+		resetGDriveClientCache();
+
+		const { google } = require("googleapis");
+		const origDrive = google.drive;
+		google.drive = mock(() => ({
+			files: {
+				get: async () => {
+					throw new Error("invalid_grant");
+				}
+			}
+		}));
+
+		const store = {
+			downloading: [],
+			outgoing_msg: [],
+			paperless: [],
+			loading: [],
+			transcoding: []
+		} as any;
+
+		const msg: MsgEventType = {
+			destination: "dest123",
+			event: {
+				type: "message",
+				webhookEventId: "evt_gdrive_err_123",
+				replyToken: "reply_gdrive_err_123",
+				message: {
+					type: "text",
+					id: "msg_gdrive_err_123",
+					quoteToken: "quote_gdrive_err_123",
+					text: "Link 1: https://drive.google.com/file/d/gdrive_err_1/view Link 2: https://drive.google.com/file/d/gdrive_err_2/view"
+				},
+				timestamp: Date.now(),
+				source: {
+					type: "user",
+					userId: "user_abc"
+				}
+			}
+		};
+
+		await expect(processDownload(msg, store)).resolves.toBeUndefined();
+
+		google.drive = origDrive;
+
+		expect(store.outgoing_msg.length).toBe(1);
+		expect(store.outgoing_msg[0].message).toContain("Google Drive download skipped (gdrive_err_1): invalid_grant");
+		expect(store.outgoing_msg[0].message).toContain("Google Drive download skipped (gdrive_err_2): invalid_grant");
+	});
 });
 

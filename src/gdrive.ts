@@ -46,6 +46,7 @@ export function getGDriveClient(): drive_v3.Drive {
 	const oauthRefreshToken = process.env.GDRIVE_OAUTH_REFRESH_TOKEN || '';
 	const serviceAccountConfig = process.env.GDRIVE_SERVICE_ACCOUNT_JSON || '';
 	const apiKey = process.env.GDRIVE_API_KEY || '';
+	const authMethod = (process.env.GDRIVE_AUTH_METHOD || '').toLowerCase();
 
 	let currentMtime = 0;
 	if (serviceAccountConfig && existsSync(serviceAccountConfig)) {
@@ -54,7 +55,7 @@ export function getGDriveClient(): drive_v3.Drive {
 		} catch (_) {}
 	}
 
-	const currentCredKey = `${oauthClientId}:${oauthClientSecret}:${oauthRefreshToken}:${serviceAccountConfig}:${currentMtime}:${apiKey}`;
+	const currentCredKey = `${authMethod}:${oauthClientId}:${oauthClientSecret}:${oauthRefreshToken}:${serviceAccountConfig}:${currentMtime}:${apiKey}`;
 
 	if (cachedDriveClient && cachedCredKey === currentCredKey) {
 		return cachedDriveClient;
@@ -63,16 +64,11 @@ export function getGDriveClient(): drive_v3.Drive {
 	let driveClient: drive_v3.Drive;
 	let authClient: any = null;
 
-	if (oauthClientId && oauthClientSecret && oauthRefreshToken) {
-		authClient = new google.auth.OAuth2(
-			oauthClientId,
-			oauthClientSecret
-		);
-		authClient.setCredentials({
-			refresh_token: oauthRefreshToken
-		});
-		driveClient = google.drive({ version: 'v3', auth: authClient });
-	} else if (serviceAccountConfig) {
+	const useServiceAccount = authMethod === 'service_account' || (!authMethod && Boolean(serviceAccountConfig));
+	const useOAuth = authMethod === 'oauth' || (!authMethod && !useServiceAccount && Boolean(oauthClientId && oauthClientSecret && oauthRefreshToken));
+	const useApiKey = authMethod === 'api_key' || (!authMethod && !useServiceAccount && !useOAuth && Boolean(apiKey));
+
+	if (useServiceAccount && serviceAccountConfig) {
 		let credentials: any = null;
 		if (existsSync(serviceAccountConfig)) {
 			const fileContent = readFileSync(serviceAccountConfig, 'utf-8');
@@ -87,12 +83,20 @@ export function getGDriveClient(): drive_v3.Drive {
 				scopes: ['https://www.googleapis.com/auth/drive.readonly']
 			});
 			driveClient = google.drive({ version: 'v3', auth: authClient });
+		} else if (oauthClientId && oauthClientSecret && oauthRefreshToken) {
+			authClient = new google.auth.OAuth2(oauthClientId, oauthClientSecret);
+			authClient.setCredentials({ refresh_token: oauthRefreshToken });
+			driveClient = google.drive({ version: 'v3', auth: authClient });
 		} else if (apiKey) {
 			driveClient = google.drive({ version: 'v3', auth: apiKey });
 		} else {
 			driveClient = google.drive({ version: 'v3' });
 		}
-	} else if (apiKey) {
+	} else if (useOAuth && oauthClientId && oauthClientSecret && oauthRefreshToken) {
+		authClient = new google.auth.OAuth2(oauthClientId, oauthClientSecret);
+		authClient.setCredentials({ refresh_token: oauthRefreshToken });
+		driveClient = google.drive({ version: 'v3', auth: authClient });
+	} else if (useApiKey && apiKey) {
 		driveClient = google.drive({ version: 'v3', auth: apiKey });
 	} else {
 		driveClient = google.drive({ version: 'v3' });

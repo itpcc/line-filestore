@@ -131,4 +131,34 @@ describe("Google Drive Client Caching", () => {
 		delete process.env.GDRIVE_OAUTH_REFRESH_TOKEN;
 		resetGDriveClientCache();
 	});
+
+	test("Prioritizes Service Account authentication over stale OAuth variables when GDRIVE_SERVICE_ACCOUNT_JSON is set", () => {
+		resetGDriveClientCache();
+		process.env.GDRIVE_OAUTH_CLIENT_ID = "stale_client_id";
+		process.env.GDRIVE_OAUTH_CLIENT_SECRET = "stale_client_secret";
+		process.env.GDRIVE_OAUTH_REFRESH_TOKEN = "stale_refresh_token";
+		process.env.GDRIVE_SERVICE_ACCOUNT_JSON = '{"type":"service_account","project_id":"test"}';
+
+		let googleAuthCalled = false;
+		const { google } = require("googleapis");
+		const origGoogleAuth = google.auth.GoogleAuth;
+		google.auth.GoogleAuth = class MockGoogleAuth {
+			constructor(opts: any) {
+				googleAuthCalled = true;
+			}
+		};
+
+		try {
+			const client = getGDriveClient();
+			expect(client).toBeDefined();
+			expect(googleAuthCalled).toBe(true);
+		} finally {
+			google.auth.GoogleAuth = origGoogleAuth;
+			delete process.env.GDRIVE_OAUTH_CLIENT_ID;
+			delete process.env.GDRIVE_OAUTH_CLIENT_SECRET;
+			delete process.env.GDRIVE_OAUTH_REFRESH_TOKEN;
+			delete process.env.GDRIVE_SERVICE_ACCOUNT_JSON;
+			resetGDriveClientCache();
+		}
+	});
 });

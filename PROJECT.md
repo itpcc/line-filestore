@@ -193,6 +193,11 @@ DIRECTUS_TOKEN="<Directus static token>"
 
 # Stirling PDF Settings
 STIRLING_PDF_URL="http://localhost:8080"
+
+# Google Drive Settings
+GDRIVE_FILE_SIZE_MAX_MB=50
+GDRIVE_AUTH_METHOD="service_account" # Options: service_account | oauth | api_key
+GDRIVE_SERVICE_ACCOUNT_JSON="/path/to/service-account.json"
 ```
 
 ### Step 1: Install Dependencies

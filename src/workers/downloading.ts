@@ -106,6 +106,8 @@ export async function processDownload(msg: MsgEventType, store: typeof plugin.st
 	let originalOrigFilename: string | null = null;
 	const filenameOk: [string, string][] = [];
 
+	const gdriveErrors: string[] = [];
+
 	if (message.type === 'text') {
 		const gdriveIds = extractGDriveFileIds(message.text);
 		for (let idx = 0; idx < gdriveIds.length; idx++) {
@@ -126,11 +128,16 @@ export async function processDownload(msg: MsgEventType, store: typeof plugin.st
 				});
 			} catch (e: any) {
 				console.error(`downloading | Google Drive metadata error for ${gdriveId}:`, e);
-				store.outgoing_msg.push({
-					event: msg,
-					message: `Google Drive download skipped (${gdriveId}): ${e?.message ?? e}`
-				});
+				gdriveErrors.push(`Google Drive download skipped (${gdriveId}): ${e?.message ?? e}`);
 			}
+		}
+
+		if (!urls.length && gdriveErrors.length > 0) {
+			store.outgoing_msg.push({
+				event: msg,
+				message: gdriveErrors.join('\n')
+			});
+			return;
 		}
 	} else if (message.type === 'audio') {
 		urls.push({
@@ -352,13 +359,18 @@ export async function processDownload(msg: MsgEventType, store: typeof plugin.st
 		filenameOk.push([previewFilename, previewOrigFilename]);
 	}
 
+	const fileStoreMsg = `
+		File store:
+		${filenameOk.map(([filenameOk, originalName]) =>
+		`  - ${filenameOk} (Original name: ${originalName})`).join('\n')}
+	`;
+	const messageText = gdriveErrors.length > 0
+		? `${gdriveErrors.join('\n')}\n\n${fileStoreMsg}`
+		: fileStoreMsg;
+
 	store.outgoing_msg.push({
 		event: msg,
-		message: `
-			File store:
-			${filenameOk.map(([filenameOk, originalName]) =>
-			`  - ${filenameOk} (Original name: ${originalName})`).join('\n')}
-		`,
+		message: messageText,
 		directus_file_id: directusFileId,
 		directus_preview_id: directusPreviewId,
 		directus_files_ids: directusFilesIds
