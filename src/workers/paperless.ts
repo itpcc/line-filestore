@@ -67,18 +67,20 @@ export const plugin = new Elysia({ name: 'worker-paperless' })
 						throw err;
 					}
 
-					const taskInfo = await taskRes.json() as PaperlessTaskRespType[];
+					const taskInfo = await taskRes.json() as PaperlessTaskRespType;
 
-					switch (taskInfo[0].status) {
-						case 'FAILURE':
-							isDone = true;
-							break;
+					switch (taskInfo?.results?.[0]?.status?.toUpperCase()) {
 						case 'STARTED':
 						case 'PARSE':
 							await new Promise(r => setTimeout(r, 5000));
 							break;
 						case 'SUCCESS':
-							docId = taskInfo[0].related_document;
+							docId = taskInfo?.results?.[0]?.related_document;
+							isDone = true;
+							break;
+						case 'FAILURE':
+						default:
+							console.log('paperless | Task info (FAILURE): ', taskInfo);
 							isDone = true;
 							break;
 					}

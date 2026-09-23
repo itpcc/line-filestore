@@ -102,17 +102,21 @@ export type PaperlessMsgType = {
 	origFilename: string,
 	response: Blob
 };
-export type PaperlessTaskRespType = {
+export type PaperlessTaskRespResultType = {
 	id: number,
 	task_id: string
 	task_file_name: string
 	date_created: string,
 	date_done: string | null,
 	type: "file",
-	status: "STARTED" | "FAILURE" | "SUCCESS" | "PARSE",
+	status: "STARTED" | "FAILURE" | "SUCCESS" | "PARSE" | "started" | "failure" | "success" | "parse",
 	result: string | null,
 	acknowledged: boolean
 	related_document: string | null
+};
+export type PaperlessTaskRespType = {
+	count: number,
+	results: PaperlessTaskRespResultType[]
 };
 export type OutgoingMsgType = {
 	event: MsgEventType,
